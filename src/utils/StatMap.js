@@ -1,4 +1,4 @@
-import {splitPath, pathBasename} from "./js-util.js";
+import {splitPath, pathBasename, pathResolve} from "./js-util.js";
 import FileError from "../utils/FileError.js";
 
 export default class StatMap {
@@ -16,21 +16,58 @@ export default class StatMap {
 		return this.map;
 	}
 
-	get(name) {
+	realpath(name) {
+		let split=splitPath(name);
+		if (!split.length)
+			return "/";
+
+		let parentSplit=split.slice(0,split.length-1);
+		let realParentSplit=splitPath(this.realpath(parentSplit));
+		let parent=this.get(realParentSplit);
+		if (!parent)
+			throw new FileError("ENOENT");
+
+		let basename=pathBasename(name);
+		let entry=this.lget([...realParentSplit,basename]);
+		if (!entry)
+			throw new FileError("ENOENT");
+
+		if (entry.type=="symlink")
+			return this.realpath(pathResolve(realParentSplit,entry.target));
+
+		return "/"+[...realParentSplit,basename].join("/");
+
+	}
+
+	lget(name) {
 		let split=splitPath(name);
 		if (!split.length)
 			return this.map.root;
 
-		let parent=this.getParent(split);
+		let parent=this.getParent(name);
 		if (!parent)
 			return;
 
-		let basename=split[split.length-1];
-		let id=parent.children[basename];
+		let id=parent.children[pathBasename(name)];
 		if (!id)
 			return;
 
 		return this.map[id];
+	}
+
+	get(name) {
+		let entry=this.lget(name);
+		if (!entry)
+			return;
+
+		if (entry.type=="symlink") {
+			let split=splitPath(name);
+			let parentPath=split.slice(0,split.length-1);
+			let resolved=pathResolve(parentPath,entry.target);
+			return this.get(resolved);
+		}
+
+		return entry;
 	}
 
 	getParent(name) {
@@ -47,11 +84,8 @@ export default class StatMap {
 	}
 
 	create(name, type) {
-		let split=splitPath(name);
-		let parentPath=split.slice(0,split.length-1);
-		let basename=split[split.length-1];
-
-		let parent=this.get(parentPath);
+		let basename=pathBasename(name);
+		let parent=this.getParent(name);
 		if (!parent)
 			throw new FileError("ENOENT");
 
@@ -68,6 +102,10 @@ export default class StatMap {
 				break;
 
 			case "file":
+				entry.nlink=1;
+				break;
+
+			case "symlink":
 				entry.nlink=1;
 				break;
 
@@ -96,6 +134,7 @@ export default class StatMap {
 		let entry=this.map[id];
 		switch (entry.type) {
 			case "file":
+			case "symlink":
 				entry.nlink--;
 				if (!entry.nlink)
 					delete this.map[id];
@@ -120,11 +159,11 @@ export default class StatMap {
 	}
 
 	link(oldName, newName) {
-		let old=this.get(oldName);
+		let old=this.lget(oldName);
 		if (!old)
 			throw new FileError("ENOENT");
 
-		if (old.type!="file")
+		if (!["file","symlink"].includes(old.type))
 			throw new FileError("EPERM");
 
 		let oldParent=this.getParent(oldName);
@@ -144,5 +183,28 @@ export default class StatMap {
 		let id=oldParent.children[oldBasename];
 		this.map[id].nlink++;
 		newParent.children[newBasename]=id;
+	}
+
+	rename(from, to) {
+		let fromParent=this.getParent(from);
+		let fromBasename=pathBasename(from);
+		let toParent=this.getParent(to);
+		let toBasename=pathBasename(to);
+
+		if (!fromParent || !toParent)
+			throw new FileError("ENOENT");
+
+		if (fromParent.type!="dir" || toParent.type!="dir")
+			throw new FileError("ENOTDIR");
+
+		if (!fromParent.children[fromBasename])
+			throw new FileError("ENOENT");
+
+		if (toParent.children[toBasename])
+			throw new FileError("EEXIST");
+
+		let id=fromParent.children[fromBasename];
+		delete fromParent[fromBasename];
+		toParent.children[toBasename]=id;
 	}
 }

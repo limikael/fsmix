@@ -11,7 +11,6 @@ import Stat from './Stat.js';
 	- writeFile
 	- link
 	- readdir
-
 	- stat
 	- lstat
 	- symlink
@@ -19,9 +18,9 @@ import Stat from './Stat.js';
 	- realpath
 	- rename
 	- rmdir, rm, unlink
-	- copyFile, cp
 
-	skip:
+	skip for now:
+	- copyFile, cp
 	- lutimes
 	- utimes
 */
@@ -94,31 +93,80 @@ class IndexFsPromises {
 		return new Stat(stat);
 	}
 
+	async lstat(name) {
+		await this.fs.init();
+		let stat=this.fs.statMap.lget(name);
+		if (!stat)
+			throw new FileError("ENOENT");
+
+		return new Stat(stat);
+	}
+
 	async link(oldName, newName) {
 		return await this.fs.op("readwrite",async store=>{
 			this.fs.statMap.link(oldName,newName);
 		});
 	}
 
-	// todo: recursive
-	async unlink(name, options) {
-		return await this.fs.op("readwrite",async store=>{
-			let entry=this.fs.statMap.unlink(name);
-			if (entry.nlink==0 && entry.type=="file") {
-				await requestPromise(store.delete(entry.key));
+	async _unlink(store, name, options={}) {
+		if (options.recursive) {
+			let stat=this.fs.statMap.lget(name);
+			if (!stat)
+				throw new FileError("ENOENT");
+
+			let splitName=splitPath(name);
+			if (stat.type=="dir") {
+				for (let child of Object.keys(stat.children)) {
+					let childName=[...splitName,child];
+					await this._unlink(store,childName,options);
+				}
 			}
+		}
+
+		let entry=this.fs.statMap.unlink(name);
+		if (entry.nlink==0 && entry.type=="file") {
+			await requestPromise(store.delete(entry.key));
+		}
+	}
+
+	async unlink(name, options={}) {
+		return await this.fs.op("readwrite",async store=>{
+			await this._unlink(store,name,options)
 		});
 	}
 
-	async rm(name, options) {
+	async rm(name, options={}) {
+		await this.fs.init();
 		return await this.unlink(name,options);
 	}
 
-	async rmdir(name, options) {
+	async rmdir(name, options={}) {
+		await this.fs.init();
 		return await this.unlink(name,options);
+	}
+
+	async symlink(target, name) {
+		return await this.fs.op("readwrite",async store=>{
+			let entry=this.fs.statMap.create(name,"symlink");
+			entry.target=target;
+		});
+	}
+
+	async readlink(name) {
+		return await this.fs.op("readonly",async store=>{
+			let entry=this.fs.statMap.lget(name);
+			if (!entry)
+				throw new FileError("ENOENT");
+
+			if (entry.type!="symlink")
+				throw new FileError("EINVAL");
+
+			return entry.target;
+		});
 	}
 
 	async readdir(name) {
+		await this.fs.init();
 		let entry=this.fs.statMap.get(name);
 		if (!entry)
 			throw new FileError("ENOENT");
@@ -127,6 +175,17 @@ class IndexFsPromises {
 			throw new FileError("ENOTDIR");
 
 		return Object.keys(entry.children);
+	}
+
+	async realpath(name) {
+		await this.fs.init();
+		return this.fs.statMap.realpath(name);
+	}
+
+	async rename(from, to) {
+		return await this.fs.op("readwrite",async store=>{
+			this.fs.statMap.rename(from,to);
+		});
 	}
 }
 
@@ -143,8 +202,13 @@ export default class IndexFs {
 		this.promises=new IndexFsPromises(this);
 
 		let funcs=[
-			"readFile", "writeFile", "mkdir", "stat", "link",
-			"unlink", "rm", "rmdir", "readdir"
+			"readFile", "writeFile", 
+			"mkdir", "readdir",
+			"stat", "lstat",
+			"link", "unlink", "symlink", "readlink",
+			"rm", "rmdir", 
+			"realpath",
+			"rename"
 		];
 
 		for (let func of funcs)

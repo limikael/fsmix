@@ -67,10 +67,11 @@ describe("indexfs",()=>{
 		expect(s.isFile()).toEqual(true);
 		expect(s.size).toEqual(5);
 
+		await new Promise(r=>setTimeout(r,1));
+
 		await fs.promises.writeFile("hellofile","helloagain");
 		let s3=await fs.promises.stat("hellofile");
 		expect(s3.size).toEqual(10);
-
 		expect(s.mtimeMs).not.toEqual(s3.mtimeMs);
 
 		await fs.promises.mkdir("/test");

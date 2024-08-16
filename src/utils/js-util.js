@@ -45,6 +45,27 @@ export function pathBasename(pathname) {
 	return split[split.length-1];
 }
 
+export function pathResolve(parent, child) {
+	if (child.startsWith("/"))
+		parent="";
+
+	let path=splitPath(parent);
+	let splitChild=splitPath(child);
+	for (let part of splitChild) {
+		if (part=="..") {
+			path.pop();
+		}
+
+		else if (part==".") {
+		}
+
+		else
+			path.push(part);
+	}
+
+	return path;
+}
+
 export function arrayUnique(a) {
 	function onlyUnique(value, index, array) {
 		return array.indexOf(value) === index;
