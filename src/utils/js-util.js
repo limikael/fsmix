@@ -40,6 +40,11 @@ export function splitPath(pathname) {
 	return pathname.split("/").filter(s=>s.length>0);
 }
 
+export function pathBasename(pathname) {
+	let split=splitPath(pathname);
+	return split[split.length-1];
+}
+
 export function arrayUnique(a) {
 	function onlyUnique(value, index, array) {
 		return array.indexOf(value) === index;

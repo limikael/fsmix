@@ -6,7 +6,8 @@ export default class FileError extends Error {
 			"ENOTDIR": "Not a directory.",
 			"ENOTEMPTY": "Directory not empty.",
 			"ENOTFILE": "Not a regular file.",
-			"EEXIST": "File already exists."
+			"EEXIST": "File already exists.",
+			"EPERM": "Operation not permitted."
 		};
 
 		if (!messages[code])

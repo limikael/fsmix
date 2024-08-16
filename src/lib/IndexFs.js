@@ -3,23 +3,22 @@ import {requestPromise} from "../utils/idb-util.js";
 import path from "path-browserify";
 import StatMap from "../utils/StatMap.js";
 import FileError from "../utils/FileError.js";
+import Stat from './Stat.js';
 
 /*
 	func:
 	- readFile
 	- writeFile
+	- link
+	- readdir
 
 	- stat
 	- lstat
-	- link
 	- symlink
-	- readdir
 	- readlink
 	- realpath
 	- rename
-	- rmdir
-	- rm
-	- unlink
+	- rmdir, rm, unlink
 	- copyFile, cp
 
 	skip:
@@ -38,7 +37,7 @@ class IndexFsPromises {
 					ArrayBuffer.isView(content))
 				content=new Blob([content]);
 
-			if (!content instanceof Blob)
+			if (!(content instanceof Blob))
 				throw new Error("Need something blobbable.");
 
 			let stat=this.fs.statMap.get(name);
@@ -54,6 +53,9 @@ class IndexFsPromises {
 				stat=this.fs.statMap.create(name,"file");
 				stat.key=await requestPromise(store.add(content));
 			}
+
+			stat.size=content.size;
+			stat.mtimeMs=Date.now();
 		});
 	}
 
@@ -73,7 +75,7 @@ class IndexFsPromises {
 			else if (encoding)
 				throw new Error("Can only handle utf8 encoding");
 
-			return content
+			return content;
 		});
 	}
 
@@ -82,16 +84,67 @@ class IndexFsPromises {
 			this.fs.statMap.create(name,"dir");
 		});
 	}
+
+	async stat(name) {
+		await this.fs.init();
+		let stat=this.fs.statMap.get(name);
+		if (!stat)
+			throw new FileError("ENOENT");
+
+		return new Stat(stat);
+	}
+
+	async link(oldName, newName) {
+		return await this.fs.op("readwrite",async store=>{
+			this.fs.statMap.link(oldName,newName);
+		});
+	}
+
+	// todo: recursive
+	async unlink(name, options) {
+		return await this.fs.op("readwrite",async store=>{
+			let entry=this.fs.statMap.unlink(name);
+			if (entry.nlink==0 && entry.type=="file") {
+				await requestPromise(store.delete(entry.key));
+			}
+		});
+	}
+
+	async rm(name, options) {
+		return await this.unlink(name,options);
+	}
+
+	async rmdir(name, options) {
+		return await this.unlink(name,options);
+	}
+
+	async readdir(name) {
+		let entry=this.fs.statMap.get(name);
+		if (!entry)
+			throw new FileError("ENOENT");
+
+		if (entry.type!="dir")
+			throw new FileError("ENOTDIR");
+
+		return Object.keys(entry.children);
+	}
 }
 
 export default class IndexFs {
 	constructor({dbName, indexedDB}) {
+		if (!dbName)
+			dbName="files";
+
+		if (!indexedDB)
+			indexedDB=globalThis.indexedDB;
+
 		this.dbName=dbName;
 		this.indexedDB=indexedDB;
 		this.promises=new IndexFsPromises(this);
 
 		let funcs=[
-			"readFile", "writeFile", "mkdir"
+			"readFile", "writeFile", "mkdir", "stat", "link",
+			"unlink", "rm", "rmdir", "readdir"
 		];
 
 		for (let func of funcs)
@@ -133,10 +186,11 @@ export default class IndexFs {
 		let transaction=this.db.transaction(["files"],type);
 		let store=transaction.objectStore("files");
 		let res=await fn(store);
-		if (type=="readwrite")
+		if (type=="readwrite") {
 			await requestPromise(store.put(this.statMap.getData(),"index"));
+			await requestPromise(transaction);
+		}
 
-		await requestPromise(transaction);
 		return res;
 	}
 

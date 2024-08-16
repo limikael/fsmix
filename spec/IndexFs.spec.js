@@ -58,5 +58,75 @@ describe("indexfs",()=>{
 		//console.log(await fs.promises.readFile("hellofile"));
 		expect(await (await fs.promises.readFile("hellofile")).text()).toEqual("hello");
 		expect(await fs.promises.readFile("hellofile","utf8")).toEqual("hello");
-	})
+	});
+
+	it("can stat",async ()=>{
+		let fs=new IndexFs({indexedDB, dbName: "test5"});
+		await fs.promises.writeFile("hellofile","hello");
+		let s=await fs.promises.stat("hellofile");
+		expect(s.isFile()).toEqual(true);
+		expect(s.size).toEqual(5);
+
+		await fs.promises.writeFile("hellofile","helloagain");
+		let s3=await fs.promises.stat("hellofile");
+		expect(s3.size).toEqual(10);
+
+		expect(s.mtimeMs).not.toEqual(s3.mtimeMs);
+
+		await fs.promises.mkdir("/test");
+		let s2=await fs.promises.stat("/test");
+		expect(s2.isDirectory()).toEqual(true);
+	});
+
+	it("can hard link",async ()=>{
+		let fs=new IndexFs({indexedDB, dbName: "test5"});
+		await fs.promises.writeFile("hellofile","hello");
+		await fs.promises.link("hellofile","hello2");
+
+		expect(await fs.promises.readFile("hello2","utf8")).toEqual("hello");
+		let id=fs.statMap.map.root.children["hellofile"];
+		expect(fs.statMap.map[id].nlink).toEqual(2);
+
+		let fs2=new IndexFs({indexedDB, dbName: "test5"});
+		await fs2.init();
+		expect(fs2.statMap.map[id].nlink).toEqual(2);
+	});
+
+	it("can unlink",async ()=>{
+		let fs=new IndexFs({indexedDB, dbName: "test6"});
+		await fs.promises.writeFile("hellofile","hello");
+		await fs.promises.link("hellofile","hello2");
+		let id=fs.statMap.map.root.children["hellofile"];
+
+		expect(fs.statMap.map[id].nlink).toEqual(2);
+
+		await fs.promises.unlink("hellofile");
+		expect(await fs.promises.readFile("hello2","utf8")).toEqual("hello");
+		expect(fs.statMap.map[id].nlink).toEqual(1);
+
+		await fs.promises.unlink("hello2");
+		expect(fs.statMap.map[id]).toEqual(undefined);
+	});
+
+	it("can unlink dirs",async ()=>{
+		let fs=new IndexFs({indexedDB, dbName: "test7"});
+		await fs.promises.mkdir("hello");
+		await fs.promises.writeFile("hello/test","content");
+
+		let e=await catchError(async ()=>await fs.promises.unlink("hello"));
+		expect(e.code).toEqual("ENOTEMPTY");
+
+		await fs.promises.unlink("hello/test");
+		await fs.promises.unlink("hello");
+		expect(Object.keys(fs.statMap.map).length).toEqual(1);
+	});
+
+	it("can readdir",async ()=>{
+		let fs=new IndexFs({indexedDB, dbName: "test8"});
+		await fs.promises.mkdir("dir");
+		await fs.promises.writeFile("dir/test","hello");
+		await fs.promises.writeFile("dir/test2","hello2");
+
+		expect(await fs.promises.readdir("dir")).toEqual(["test","test2"]);
+	});
 })

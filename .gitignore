@@ -6,3 +6,4 @@ public/*.js
 upload
 *.db
 attic
+tmp
