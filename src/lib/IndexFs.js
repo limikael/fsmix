@@ -69,18 +69,44 @@ class IndexFsPromises {
 
 			let content=await requestPromise(store.get(stat.key));
 			if (encoding=="utf8")
-				content=await content.text();
+				return await content.text();
+
+			else if (encoding=="blob")
+				return content;
 
 			else if (encoding)
 				throw new Error("Can only handle utf8 encoding");
 
-			return content;
+			//console.log(content);
+
+			return new Uint8Array(await (new Response(content)).arrayBuffer());
 		});
 	}
 
-	async mkdir(name) {
-		return await this.fs.op("readwrite",async store=>{
+	_mkdir(name, {recursive}={}) {
+		if (!recursive) {
 			this.fs.statMap.create(name,"dir");
+			return;
+		}
+
+		let current=this.fs.statMap.get(name);
+		if (current) {
+			if (current.type!="dir")
+				throw new FileError("ENOTDIR");
+
+			return;
+		}
+
+		let splitName=splitPath(name);
+		let parentSplit=splitName.slice(0,splitName.length-1);
+		this._mkdir(parentSplit,{recursive});
+
+		this.fs.statMap.create(name,"dir");
+	}
+
+	async mkdir(name, options) {
+		return await this.fs.op("readwrite",async store=>{
+			this._mkdir(name,options);
 		});
 	}
 
@@ -189,8 +215,8 @@ class IndexFsPromises {
 	}
 }
 
-export default class IndexFs {
-	constructor({dbName, indexedDB}) {
+export class IndexFs {
+	constructor({dbName, indexedDB}={}) {
 		if (!dbName)
 			dbName="files";
 
@@ -269,3 +295,5 @@ export default class IndexFs {
 			return false;
 	}
 }
+
+export default IndexFs;

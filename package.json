@@ -17,6 +17,7 @@
     "katnip-watch": "^3.0.24"
   },
   "exports": {
-    "./isomain": "./spec/main/index.jsx"
+    "./isomain": "./spec/main/index.jsx",
+    ".": "./src/lib/lib.js"
   }
 }

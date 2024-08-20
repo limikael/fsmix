@@ -56,7 +56,7 @@ describe("indexfs",()=>{
 		let fs=new IndexFs({indexedDB, dbName: "test4"});
 		await fs.promises.writeFile("hellofile","hello");//new Blob(["hello"]));
 		//console.log(await fs.promises.readFile("hellofile"));
-		expect(await (await fs.promises.readFile("hellofile")).text()).toEqual("hello");
+		expect(await (await fs.promises.readFile("hellofile","blob")).text()).toEqual("hello");
 		expect(await fs.promises.readFile("hellofile","utf8")).toEqual("hello");
 	});
 
@@ -130,4 +130,16 @@ describe("indexfs",()=>{
 
 		expect(await fs.promises.readdir("dir")).toEqual(["test","test2"]);
 	});
+
+	it("can mkdir recursive",async ()=>{
+		let fs=new IndexFs({indexedDB, dbName: "test9"});
+		await fs.promises.mkdir("dir/hello",{recursive: true});
+		await fs.promises.mkdir("dir",{recursive: true});
+		await fs.promises.mkdir("dir/hello/world",{recursive: true});
+		await fs.promises.mkdir("",{recursive: true});
+
+		expect(fs.existsSync("dir")).toEqual(true);
+		expect(fs.existsSync("dir/hello")).toEqual(true);
+		expect(fs.existsSync("dir/hello/world")).toEqual(true);
+	})
 })
