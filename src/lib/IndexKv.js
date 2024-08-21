@@ -181,10 +181,10 @@ export default class IndexKv extends EventTarget {
 			let req=this.readOp(store=>store.get(key));
 			let ev=await eventPromise(req,"success","error");
 			value=ev.target.result;
-
-			this.lruCache.set(key,value);
-			return value;
 		}
+
+		this.lruCache.set(key,value);
+		return value;
 	}
 
 	async set(key, value) {

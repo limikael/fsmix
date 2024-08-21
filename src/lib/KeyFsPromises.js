@@ -49,6 +49,10 @@ export default class KeyFsPromises {
 				throw new FileError("ENOTFILE");
 
 			let content=await this.fs.kv.get(stat.key);
+			if (!content) {
+				throw new Error("Inode missing, fn="+name+" inode="+JSON.stringify(stat));
+			}
+
 			if (encoding=="utf8")
 				return await content.text();
 
