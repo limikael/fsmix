@@ -1,11 +1,11 @@
-import IndexFs from "../src/lib/IndexFs.js";
+import {createIndexFs} from "../src/lib/lib.js";
 import {indexedDB} from "fake-indexeddb";
 import {catchError} from "../src/utils/test-util.js";
 import {ResolvablePromise} from "../src/utils/js-util.js";
 
 describe("indexfs",()=>{
 	it("works",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test"});
+		let fs=createIndexFs({indexedDB, dbName: "test"});
 		await fs.promises.writeFile("hello","testing");
 		await fs.promises.writeFile("/helloworld","testing2");
 
@@ -21,7 +21,9 @@ describe("indexfs",()=>{
 		let contentAgain=await fs.promises.readFile("/dir/test/hello","utf8");
 		expect(contentAgain).toEqual("testing3");
 
-		let fs2=new IndexFs({indexedDB, dbName: "test"});
+		await fs.sync();
+
+		let fs2=createIndexFs({indexedDB, dbName: "test"});
 		await fs2.init();
 		//console.log(fs2.statMap.map);
 		let content2=await fs2.promises.readFile("dir/test/hello","utf8");
@@ -29,13 +31,13 @@ describe("indexfs",()=>{
 	});
 
 	it("throws an error",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test2"});
+		let fs=createIndexFs({indexedDB, dbName: "test2"});
 		let e=await catchError(async ()=>await fs.promises.readFile("doesnotexist"));
 		expect(e.code).toEqual("ENOENT");
 	});
 
 	it("can check existence",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test4"});
+		let fs=createIndexFs({indexedDB, dbName: "test4"});
 		await fs.init();
 		expect(fs.existsSync("/hello")).toEqual(false);
 		await fs.promises.writeFile("/hello","test");
@@ -44,7 +46,7 @@ describe("indexfs",()=>{
 
 	it("has a callback interface",async ()=>{
 		let p=new ResolvablePromise();
-		let fs=new IndexFs({indexedDB, dbName: "test3"});
+		let fs=createIndexFs({indexedDB, dbName: "test3"});
 		fs.mkdir("/hello",()=>{
 			p.resolve();
 		});
@@ -53,7 +55,7 @@ describe("indexfs",()=>{
 	});
 
 	it("works with blobs",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test4"});
+		let fs=createIndexFs({indexedDB, dbName: "test4"});
 		await fs.promises.writeFile("hellofile","hello");//new Blob(["hello"]));
 		//console.log(await fs.promises.readFile("hellofile"));
 		expect(await (await fs.promises.readFile("hellofile","blob")).text()).toEqual("hello");
@@ -61,7 +63,7 @@ describe("indexfs",()=>{
 	});
 
 	it("can stat",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test5"});
+		let fs=createIndexFs({indexedDB, dbName: "test5"});
 		await fs.promises.writeFile("hellofile","hello");
 		let s=await fs.promises.stat("hellofile");
 		expect(s.isFile()).toEqual(true);
@@ -80,7 +82,7 @@ describe("indexfs",()=>{
 	});
 
 	it("can hard link",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test5"});
+		let fs=createIndexFs({indexedDB, dbName: "test5"});
 		await fs.promises.writeFile("hellofile","hello");
 		await fs.promises.link("hellofile","hello2");
 
@@ -88,13 +90,15 @@ describe("indexfs",()=>{
 		let id=fs.statMap.map.root.children["hellofile"];
 		expect(fs.statMap.map[id].nlink).toEqual(2);
 
-		let fs2=new IndexFs({indexedDB, dbName: "test5"});
+		await fs.sync();
+
+		let fs2=createIndexFs({indexedDB, dbName: "test5"});
 		await fs2.init();
 		expect(fs2.statMap.map[id].nlink).toEqual(2);
 	});
 
 	it("can unlink",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test6"});
+		let fs=createIndexFs({indexedDB, dbName: "test6"});
 		await fs.promises.writeFile("hellofile","hello");
 		await fs.promises.link("hellofile","hello2");
 		let id=fs.statMap.map.root.children["hellofile"];
@@ -110,7 +114,7 @@ describe("indexfs",()=>{
 	});
 
 	it("can unlink dirs",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test7"});
+		let fs=createIndexFs({indexedDB, dbName: "test7"});
 		await fs.promises.mkdir("hello");
 		await fs.promises.writeFile("hello/test","content");
 
@@ -123,7 +127,7 @@ describe("indexfs",()=>{
 	});
 
 	it("can readdir",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test8"});
+		let fs=createIndexFs({indexedDB, dbName: "test8"});
 		await fs.promises.mkdir("dir");
 		await fs.promises.writeFile("dir/test","hello");
 		await fs.promises.writeFile("dir/test2","hello2");
@@ -132,7 +136,7 @@ describe("indexfs",()=>{
 	});
 
 	it("can mkdir recursive",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "test9"});
+		let fs=createIndexFs({indexedDB, dbName: "test9"});
 		await fs.promises.mkdir("dir/hello",{recursive: true});
 		await fs.promises.mkdir("dir",{recursive: true});
 		await fs.promises.mkdir("dir/hello/world",{recursive: true});
@@ -141,5 +145,5 @@ describe("indexfs",()=>{
 		expect(fs.existsSync("dir")).toEqual(true);
 		expect(fs.existsSync("dir/hello")).toEqual(true);
 		expect(fs.existsSync("dir/hello/world")).toEqual(true);
-	})
+	});
 })

@@ -5,33 +5,13 @@ import StatMap from "../utils/StatMap.js";
 import FileError from "../utils/FileError.js";
 import Stat from './Stat.js';
 
-/*
-	func:
-	- readFile
-	- writeFile
-	- link
-	- readdir
-	- stat
-	- lstat
-	- symlink
-	- readlink
-	- realpath
-	- rename
-	- rmdir, rm, unlink
-
-	skip for now:
-	- copyFile, cp
-	- lutimes
-	- utimes
-*/
-
-class IndexFsPromises {
+export default class KeyFsPromises {
 	constructor(fs) {
 		this.fs=fs;
 	}
 
 	async writeFile(name, content) {
-		return await this.fs.op("readwrite",async store=>{
+		return await this.fs.op("readwrite",async ()=>{
 			if (typeof content=="string" ||
 					ArrayBuffer.isView(content))
 				content=new Blob([content]);
@@ -44,13 +24,14 @@ class IndexFsPromises {
 				if (stat.type!="file")
 					throw new FileError("ENOTFILE");
 
-				await requestPromise(store.put(content,stat.key));
+				await this.fs.kv.set(stat.key,content);
 			}
 
 			else {
 				//console.log("create: "+name);
 				stat=this.fs.statMap.create(name,"file");
-				stat.key=await requestPromise(store.add(content));
+				stat.key=this.fs.generateId();
+				await this.fs.kv.set(stat.key,content);
 			}
 
 			stat.size=content.size;
@@ -59,7 +40,7 @@ class IndexFsPromises {
 	}
 
 	async readFile(name, encoding) {
-		return await this.fs.op("readonly",async store=>{
+		return await this.fs.op("readonly",async ()=>{
 			let stat=this.fs.statMap.get(name);
 			if (!stat)
 				throw new FileError("ENOENT");
@@ -67,7 +48,7 @@ class IndexFsPromises {
 			if (stat.type!="file")
 				throw new FileError("ENOTFILE");
 
-			let content=await requestPromise(store.get(stat.key));
+			let content=await this.fs.kv.get(stat.key);
 			if (encoding=="utf8")
 				return await content.text();
 
@@ -79,7 +60,13 @@ class IndexFsPromises {
 
 			//console.log(content);
 
-			return new Uint8Array(await (new Response(content)).arrayBuffer());
+			let uint8Array=new Uint8Array(await (new Response(content)).arrayBuffer());
+			//console.log("haxxing uint8array");
+			uint8Array.toString=function() {
+				let decoder=new TextDecoder();
+				return decoder.decode(this);
+			}
+			return uint8Array;
 		});
 	}
 
@@ -151,7 +138,7 @@ class IndexFsPromises {
 
 		let entry=this.fs.statMap.unlink(name);
 		if (entry.nlink==0 && entry.type=="file") {
-			await requestPromise(store.delete(entry.key));
+			await this.fs.kv.delete(entry.key);
 		}
 	}
 
@@ -214,86 +201,3 @@ class IndexFsPromises {
 		});
 	}
 }
-
-export class IndexFs {
-	constructor({dbName, indexedDB}={}) {
-		if (!dbName)
-			dbName="files";
-
-		if (!indexedDB)
-			indexedDB=globalThis.indexedDB;
-
-		this.dbName=dbName;
-		this.indexedDB=indexedDB;
-		this.promises=new IndexFsPromises(this);
-
-		let funcs=[
-			"readFile", "writeFile", 
-			"mkdir", "readdir",
-			"stat", "lstat",
-			"link", "unlink", "symlink", "readlink",
-			"rm", "rmdir", 
-			"realpath",
-			"rename"
-		];
-
-		for (let func of funcs)
-			this[func]=callbackify(this.promises[func].bind(this.promises));
-	}
-
-	async init() {
-		if (this.initPromise)
-			return this.initPromise;
-
-		this.initPromise=new ResolvablePromise();
-		let req=this.indexedDB.open(this.dbName,1);
-		req.onupgradeneeded=(ev)=>{
-			let db=ev.target.result;
-			db.createObjectStore("files",{autoIncrement: true});
-			//console.log("** upgrade event");
-		}
-
-		try {
-			this.db=await requestPromise(req);
-
-			let transaction=this.db.transaction(["files"],"readonly");
-			let store=transaction.objectStore("files");
-			this.statMap=new StatMap(await requestPromise(store.get("index")));
-			await requestPromise(transaction);
-
-			this.initPromise.resolve();
-		}
-
-		catch (e) {
-			this.initPromise.reject(e);
-		}
-
-		return this.initPromise;
-	}
-
-	async op(type, fn) {
-		await this.init();
-		let transaction=this.db.transaction(["files"],type);
-		let store=transaction.objectStore("files");
-		let res=await fn(store);
-		if (type=="readwrite") {
-			await requestPromise(store.put(this.statMap.getData(),"index"));
-			await requestPromise(transaction);
-		}
-
-		return res;
-	}
-
-	existsSync(name) {
-		if (!this.initPromise || !this.initPromise.isSettled())
-			throw new Error("Can't call existsSync before init");
-
-		if (this.statMap.get(name))
-			return true;
-
-		else
-			return false;
-	}
-}
-
-export default IndexFs;

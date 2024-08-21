@@ -1,10 +1,10 @@
-import IndexFs from "../src/lib/IndexFs.js";
+import {createIndexFs} from "../src/lib/lib.js";
 import {indexedDB} from "fake-indexeddb";
 import {catchError} from "../src/utils/test-util.js";
 
 describe("symlink",()=>{
 	it("works",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "symlinktest"});
+		let fs=createIndexFs({indexedDB, dbName: "symlinktest"});
 		await fs.promises.writeFile("hello","testing");
 		await fs.promises.symlink("hello","world");
 		await fs.promises.link("world","world2");
@@ -30,7 +30,7 @@ describe("symlink",()=>{
 	});
 
 	it("can symlink dirs",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "symlinktest2"});
+		let fs=createIndexFs({indexedDB, dbName: "symlinktest2"});
 		await fs.promises.mkdir("hello");
 		await fs.promises.symlink("hello","world");
 
@@ -40,7 +40,7 @@ describe("symlink",()=>{
 	});
 
 	it("can get realpath",async ()=>{
-		let fs=new IndexFs({indexedDB, dbName: "symlinktest3"});
+		let fs=createIndexFs({indexedDB, dbName: "symlinktest3"});
 		await fs.promises.mkdir("hello");
 		await fs.promises.writeFile("hello/test","val");
 		await fs.promises.mkdir("hello2");
