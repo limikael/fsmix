@@ -1,7 +1,8 @@
 import {ResolvablePromise, eventPromise} from "../utils/js-util.js";
+import LruCache from "../utils/LruCache.js";
 
 export default class IndexKv extends EventTarget {
-	constructor({indexedDB, dbName, storeName}={}) {
+	constructor({indexedDB, dbName, storeName, cacheMaxItems}={}) {
 		super();
 
 		this.indexedDB=indexedDB||globalThis.indexedDB;
@@ -9,6 +10,11 @@ export default class IndexKv extends EventTarget {
 		this.storeName=storeName||"kv";
 		this.writeQueue={};
 		this.written={};
+
+		if (!cacheMaxItems)
+			cacheMaxItems=10;
+
+		this.lruCache=new LruCache({maxItems: cacheMaxItems});
 	}
 
 	async init() {
@@ -154,20 +160,31 @@ export default class IndexKv extends EventTarget {
 			}
 		}
 
+		if (this.lruCache.has(key)) {
+			globalThis.stats?.count("kv cache hit");
+			return this.lruCache.get(key);
+		}
+
 		//console.log("reading: "+key);
 		//console.log(this.writeQueue,this.written);
 
+		let value;
 		if (this.writeQueue.hasOwnProperty(key))
-			return this.writeQueue[key];
+			value=this.writeQueue[key];
 
-		if (this.written.hasOwnProperty(key))
-			return this.written[key];
+		else if (this.written.hasOwnProperty(key))
+			value=this.written[key];
 
 		//console.log("not in queue, doing tx");
 
-		let req=this.readOp(store=>store.get(key));
-		let ev=await eventPromise(req,"success","error");
-		return ev.target.result;
+		else {
+			let req=this.readOp(store=>store.get(key));
+			let ev=await eventPromise(req,"success","error");
+			value=ev.target.result;
+
+			this.lruCache.set(key,value);
+			return value;
+		}
 	}
 
 	async set(key, value) {
@@ -188,6 +205,7 @@ export default class IndexKv extends EventTarget {
 
 		}
 
+		this.lruCache.set(key,value);
 		this.writeQueue[key]=value;
 		this.startWriteTransaction();
 	}
@@ -197,6 +215,7 @@ export default class IndexKv extends EventTarget {
 			await this.init();
 
 		key=this.sanitizeKey(key);
+		this.lruCache.delete(key);
 		this.writeQueue[key]=undefined;
 		this.startWriteTransaction();
 	}

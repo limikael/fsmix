@@ -92,12 +92,12 @@ export class KeyFs extends EventTarget {
 		//console.log("will save index...")
 		this.saveIndexTimeout=setTimeout(()=>{
 			this.saveIndexTimeout=null;
-			console.log("saving index");
+			//console.log("saving index");
 			this.kv.set("index",this.statMap.getData())
 				.then(()=>{
-					console.log("index saved");
+					//console.log("index saved");
 				});
-		},5000);
+		},500);
 	}
 
 	async op(type, fn) {
