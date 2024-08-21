@@ -1,11 +1,14 @@
-import {ResolvablePromise} from "../utils/js-util.js";
-import {requestPromise} from "../utils/idb-util.js";
+import {ResolvablePromise, eventPromise} from "../utils/js-util.js";
 
-export default class IndexKv {
+export default class IndexKv extends EventTarget {
 	constructor({indexedDB, dbName, storeName}={}) {
+		super();
+
 		this.indexedDB=indexedDB||globalThis.indexedDB;
 		this.dbName=dbName||"kv";
 		this.storeName=storeName||"kv";
+		this.writeQueue={};
+		this.written={};
 	}
 
 	async init() {
@@ -14,14 +17,17 @@ export default class IndexKv {
 
 		this.initPromise=new ResolvablePromise();
 		try {
-			let req=this.indexedDB.open(this.dbName,1);
+			let req=this.indexedDB.open(this.dbName,1,{
+				durability: "relaxed"
+			});
 			req.onupgradeneeded=(ev)=>{
 				let db=ev.target.result;
 				db.createObjectStore(this.storeName,{autoIncrement: true});
 				//console.log("** upgrade event: "+this.storeName);
 			}
 
-			this.db=await requestPromise(req);
+			let ev=await eventPromise(req,"success","error");
+			this.db=ev.target.result;
 			this.initPromise.resolve();
 		}
 
@@ -30,79 +36,145 @@ export default class IndexKv {
 		}
 
 		//console.log("initialized");
+		await this.initPromise;
+		this.initComplete=true;
 
-		return await this.initPromise;
+		return this.initPromise;
 	}
 
-	async restartTransaction() {
-		if (this.restartTransactionPromise)
-			return this.restartTransactionPromise;
-
-		this.restartTransactionPromise=new ResolvablePromise();
-		return await this.restartTransactionPromise;
+	handleError(error) {
+		let ev=new Event("error");
+		event.error=error;
+		this.dispatchEvent(ev);
 	}
 
-	handleTransactionComplete() {
-		//console.log("******* TRANSACTION COMPLETE");
-		this.currentTransaction=null;
-		this.currentStore=null;
+	startWriteTransaction() {
+		if (this.currentWriteTransaction)
+			return;
 
-		if (this.restartTransactionPromise) {
-			let p=this.restartTransactionPromise;
-			this.restartTransactionPromise=null;
-			this.beginTransaction();
-			p.resolve();
+		if (!Object.keys(this.writeQueue).length)
+			return;
+
+		this.written=this.writeQueue;
+		this.writeQueue={};
+
+		let tx=this.db.transaction([this.storeName],"readwrite",{
+			durability: "relaxed"
+		});
+
+		this.currentWriteTransaction=tx;
+		eventPromise(tx,"complete",["abort","error"])
+			.then(ev=>{
+				this.currentWriteTransaction=null;
+				this.written={};
+				this.startWriteTransaction();
+			})
+			.catch(ev=>{
+				this.handleError(ev);
+			});
+
+		let store=tx.objectStore(this.storeName);
+		for (let k in this.written) {
+			if (this.written[k]===undefined)
+				store.delete(k);
+
+			else
+				store.put(this.written[k],k);
 		}
 	}
 
-	beginTransaction() {
-		if (this.currentTransaction)
-			throw new Error("tx already started");
+	getReadTransaction() {
+		if (!this.currentReadTransaction) {
+			//console.log("starting new read tx");
+			let tx=this.db.transaction([this.storeName],"readonly",{
+				durability: "relaxed"
+			});
 
-		this.currentTransaction=this.db.transaction([this.storeName],"readwrite");
-		this.currentTransaction.oncomplete=()=>this.handleTransactionComplete();
-		this.currentTransaction.onabort=ev=>{
-			console.log("******** TRANSACTION ABORT");
-			console.log(ev);
+			this.currentReadTransaction=tx;
+			eventPromise(tx,"complete",["abort","error"])
+				.then(ev=>{
+					//console.log("******* READ TRANSACTION COMPLETE");
+					this.currentReadTransaction=null;
+				})
+				.catch(ev=>{
+					this.handleError(ev);
+				});
 		}
-		this.currentTransaction.onerror=ev=>{
-			console.log("******** TRANSACTION ERROR");
-			console.log(ev);
-		}
-		this.currentStore=this.currentTransaction.objectStore(this.storeName);
+
+		return this.currentReadTransaction;
 	}
 
-	async op(fn) {
-		await this.init();
+	tryReadOp(fn) {
+		let tx=this.getReadTransaction();
+		let store=tx.objectStore(this.storeName);
+		return fn(store);
+	}
 
-		if (!this.currentTransaction)
-			this.beginTransaction();
-
+	readOp(fn) {
 		try {
-			return await requestPromise(fn(this.currentStore));
+			return this.tryReadOp(fn);
 		}
 
 		catch (e) {
 			if (e.name!="TransactionInactiveError")
 				throw e;
 
-			console.log("restarting tx!!!");
+			//console.log("tx inactive");
 
-			await this.restartTransaction();
-			return await requestPromise(fn(this.currentStore));
+			this.currentReadTransaction=null;
+			return this.tryReadOp(fn);
 		}
 	}
 
+	sanitizeKey(key) {
+		if (!key)
+			throw new Error("Bad key: "+key);
+
+		return String(key);
+	}
+
 	async get(key) {
-		//console.log("getting: "+key);
-		return await this.op(store=>store.get(key));
+		if (!this.initComplete)
+			await this.init();
+
+		key=this.sanitizeKey(key);
+
+		//console.log("reading: "+key);
+		//console.log(this.writeQueue,this.written);
+
+		if (this.writeQueue.hasOwnProperty(key))
+			return this.writeQueue[key];
+
+		if (this.written.hasOwnProperty(key))
+			return this.written[key];
+
+		//console.log("not in queue, doing tx");
+
+		let req=this.readOp(store=>store.get(key));
+		let ev=await eventPromise(req,"success","error");
+		return ev.target.result;
 	}
 
 	async set(key, value) {
-		await this.op(store=>store.put(value,key));
+		if (!this.initComplete)
+			await this.init();
+
+		key=this.sanitizeKey(key);
+		this.writeQueue[key]=value;
+		this.startWriteTransaction();
 	}
 
 	async delete(key) {
-		await this.op(store=>store.delete(key));
+		if (!this.initComplete)
+			await this.init();
+
+		key=this.sanitizeKey(key);
+		this.writeQueue[key]=undefined;
+		this.startWriteTransaction();
+	}
+
+	async sync() {
+		while (this.currentWriteTransaction)
+			await eventPromise(this.currentWriteTransaction,"complete");
 	}
 }

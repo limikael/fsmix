@@ -26,9 +26,17 @@ import KeyFsPromises from "./KeyFsPromises.js";
 	- utimes
 */
 
-export class KeyFs {
+export class KeyFs extends EventTarget {
 	constructor(kv) {
+		super();
+
 		this.kv=kv;
+		this.kv.addEventListener("error",ev=>{
+			let dispatchEv=new Event("error");
+			dispatchEv.error=ev.error;
+			this.dispatchEvent(dispatchEv);
+		});
+
 		this.promises=new KeyFsPromises(this);
 
 		let funcs=[
@@ -74,6 +82,7 @@ export class KeyFs {
 		}
 
 		await this.kv.set("index",this.statMap.getData());
+		await this.kv.sync();
 	}
 
 	scheduleSaveIndex() {

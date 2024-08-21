@@ -88,3 +88,35 @@ export function callbackify(fn) {
 
 	return callbackified;
 }
+
+export function eventPromise(target, success=[], fail=[]) {
+	success=[success].flat();
+	fail=[fail].flat();
+	let p=new ResolvablePromise();
+
+	function handleSuccess(ev) {
+		cleanup();
+		p.resolve(ev);
+	}
+
+	function handleFail(ev) {
+		cleanup();
+		p.reject(ev);
+	}
+
+	function cleanup() {
+		for (let eventName of success)
+			target.removeEventListener(eventName,handleSuccess);
+
+		for (let eventName of fail)
+			target.removeEventListener(eventName,handleFail);
+	}
+
+	for (let eventName of success)
+		target.addEventListener(eventName,handleSuccess);
+
+	for (let eventName of fail)
+		target.addEventListener(eventName,handleFail);
+
+	return p;
+}
