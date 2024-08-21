@@ -1,11 +1,9 @@
 {
   "name": "fsmix",
   "license": "UNLICENSED",
-  "private": true,
   "scripts": {
     "start": "katnip dev",
     "dev": "katnip dev",
-    "postinstall": "katnip init",
     "test": "jasmine"
   },
   "type": "module",
