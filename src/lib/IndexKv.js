@@ -55,6 +55,8 @@ export default class IndexKv extends EventTarget {
 		if (!Object.keys(this.writeQueue).length)
 			return;
 
+		globalThis.stats?.count("kv write tx");
+
 		this.written=this.writeQueue;
 		this.writeQueue={};
 
@@ -85,6 +87,8 @@ export default class IndexKv extends EventTarget {
 
 	getReadTransaction() {
 		if (!this.currentReadTransaction) {
+			globalThis.stats?.count("kv read tx");
+
 			//console.log("starting new read tx");
 			let tx=this.db.transaction([this.storeName],"readonly",{
 				durability: "relaxed"
@@ -137,7 +141,18 @@ export default class IndexKv extends EventTarget {
 		if (!this.initComplete)
 			await this.init();
 
+		globalThis.stats?.count("kv get");
 		key=this.sanitizeKey(key);
+
+		if (globalThis.stats) {
+			if (!globalThis.stats.seenKeys)
+				globalThis.stats.seenKeys=[];
+
+			if (!globalThis.stats.seenKeys.includes(key)) {
+				globalThis.stats.count("kv seen keys");
+				globalThis.stats.seenKeys.push(key);
+			}
+		}
 
 		//console.log("reading: "+key);
 		//console.log(this.writeQueue,this.written);
@@ -159,7 +174,20 @@ export default class IndexKv extends EventTarget {
 		if (!this.initComplete)
 			await this.init();
 
+		globalThis.stats?.count("kv set");
 		key=this.sanitizeKey(key);
+
+		if (globalThis.stats) {
+			if (!globalThis.stats.seenKeys)
+				globalThis.stats.seenKeys=[];
+
+			if (!globalThis.stats.seenKeys.includes(key)) {
+				globalThis.stats.count("kv seen keys");
+				globalThis.stats.seenKeys.push(key);
+			}
+
+		}
+
 		this.writeQueue[key]=value;
 		this.startWriteTransaction();
 	}
