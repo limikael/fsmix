@@ -126,7 +126,7 @@ export default class IndexKv extends EventTarget {
 		}
 
 		catch (e) {
-			if (e.name!="TransactionInactiveError")
+			if (!["InvalidStateError","TransactionInactiveError"].includes(e.name))
 				throw e;
 
 			//console.log("tx inactive");
