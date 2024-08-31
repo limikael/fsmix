@@ -7,6 +7,7 @@ import Stat from './Stat.js';
 import KeyFsPromises from "./KeyFsPromises.js";
 import {minimatchAny, findFiles} from "../utils/minimatch-util.js";
 import ContentConverter from "../utils/ContentConverter.js";
+import Watcher from "./Watcher.js";
 
 /*
 	func:
@@ -57,6 +58,17 @@ export class KeyFs extends EventTarget {
 
 		this.syncPatterns=[];
 		this.syncIgnorePatterns=[];
+		this.watchers=[];
+	}
+
+	notifyWatchers(name, event) {
+		if (!this.watchers.length)
+			return;
+
+		let realName=this.realpathSync(name);
+		for (let w of this.watchers)
+			if (w.match(realName))
+				w.dispatch(event,realName);
 	}
 
 	generateId() {
@@ -215,6 +227,8 @@ export class KeyFs extends EventTarget {
 
 		stat.size=content.size;
 		stat.mtimeMs=Date.now();
+		this.notifyWatchers(name,"change");
+		this.scheduleSaveIndex();
 	}
 
 	readFileSync(name, encoding="buffer") {
@@ -256,6 +270,46 @@ export class KeyFs extends EventTarget {
 			throw new FileError("ENOENT");
 
 		return new Stat(stat);
+	}
+
+	_mkdirSync(name, {recursive}={}) {
+		if (!recursive) {
+			this.statMap.create(name,"dir");
+			this.notifyWatchers(name,"change");
+			return;
+		}
+
+		let current=this.statMap.get(name);
+		if (current) {
+			if (current.type!="dir")
+				throw new FileError("ENOTDIR");
+
+			return;
+		}
+
+		let splitName=splitPath(name);
+		let parentSplit=splitName.slice(0,splitName.length-1);
+		this._mkdirSync(parentSplit,{recursive});
+
+		this.statMap.create(name,"dir");
+		this.notifyWatchers(name,"change");
+	}
+
+	mkdirSync(name, options) {
+		this.assertInit();
+		this._mkdirSync(name,options);
+		this.scheduleSaveIndex();
+	}
+
+	watch(name, options={}) {
+		let realName=this.realpathSync(name);
+		let watcher=new Watcher(realName,{
+			recursive: options.recursive,
+			fs: this
+		});
+		this.watchers.push(watcher);
+
+		return watcher;
 	}
 }
 

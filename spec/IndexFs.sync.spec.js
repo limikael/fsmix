@@ -26,5 +26,9 @@ describe("sync",()=>{
 		expect(Object.keys(fs.kv.syncData).length).toEqual(1);
 
 		expect(()=>fs.readFileSync("/hello/world")).toThrow(new Error("Not avilable sync: /hello/world"));
+
+		fs.mkdirSync("syncdir");
+		await fs.addSyncPattern("/syncdir/**");
+		await fs.writeFileSync("syncdir/test","hello");
 	});
 });

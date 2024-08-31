@@ -30,6 +30,8 @@ export default class KeyFsPromises {
 
 			stat.size=this.fs.contentConverter.getContentSize(content);
 			stat.mtimeMs=Date.now();
+
+			this.fs.notifyWatchers(name,"change");
 		});
 	}
 
@@ -50,31 +52,9 @@ export default class KeyFsPromises {
 		});
 	}
 
-	_mkdir(name, {recursive}={}) {
-		if (!recursive) {
-			this.fs.statMap.create(name,"dir");
-			return;
-		}
-
-		let current=this.fs.statMap.get(name);
-		if (current) {
-			if (current.type!="dir")
-				throw new FileError("ENOTDIR");
-
-			return;
-		}
-
-		let splitName=splitPath(name);
-		let parentSplit=splitName.slice(0,splitName.length-1);
-		this._mkdir(parentSplit,{recursive});
-
-		this.fs.statMap.create(name,"dir");
-	}
-
 	async mkdir(name, options) {
-		return await this.fs.op("readwrite",async store=>{
-			this._mkdir(name,options);
-		});
+		await this.fs.init();
+		this.fs.mkdirSync(name,options);
 	}
 
 	async stat(name) {
