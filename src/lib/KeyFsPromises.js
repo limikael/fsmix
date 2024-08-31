@@ -17,16 +17,21 @@ export default class KeyFsPromises {
 			if (stat) {
 				if (stat.type!="file")
 					throw new FileError("ENOTFILE");
-
-				await this.fs.kv.set(stat.key,content);
 			}
 
 			else {
 				//console.log("create: "+name);
 				stat=this.fs.statMap.create(name,"file");
 				stat.key=this.fs.generateId();
-				await this.fs.kv.set(stat.key,content);
 			}
+
+			//console.log("write: "+name+" sync: "+this.fs.isSync(name));
+
+			if (this.fs.isSync(name))
+				this.fs.kv.setSync(stat.key,content);
+
+			else
+				await this.fs.kv.set(stat.key,content);
 
 			stat.size=this.fs.contentConverter.getContentSize(content);
 			stat.mtimeMs=Date.now();
@@ -77,41 +82,24 @@ export default class KeyFsPromises {
 		});
 	}
 
-	async _unlink(store, name, options={}) {
-		if (options.recursive) {
-			let stat=this.fs.statMap.lget(name);
-			if (!stat)
-				throw new FileError("ENOENT");
-
-			let splitName=splitPath(name);
-			if (stat.type=="dir") {
-				for (let child of Object.keys(stat.children)) {
-					let childName=[...splitName,child];
-					await this._unlink(store,childName,options);
-				}
-			}
-		}
-
-		let entry=this.fs.statMap.unlink(name);
-		if (entry.nlink==0 && entry.type=="file") {
-			await this.fs.kv.delete(entry.key);
-		}
-	}
-
 	async unlink(name, options={}) {
-		return await this.fs.op("readwrite",async store=>{
+		await this.fs.init();
+		this.fs.unlinkSync(name,options);
+		/*return await this.fs.op("readwrite",async store=>{
 			await this._unlink(store,name,options)
-		});
+		});*/
 	}
 
 	async rm(name, options={}) {
 		await this.fs.init();
-		return await this.unlink(name,options);
+		this.fs.unlinkSync(name,options);
+		//return await this.unlink(name,options);
 	}
 
 	async rmdir(name, options={}) {
 		await this.fs.init();
-		return await this.unlink(name,options);
+		this.fs.unlinkSync(name,options);
+		//return await this.unlink(name,options);
 	}
 
 	async symlink(target, name) {
@@ -147,6 +135,8 @@ export default class KeyFsPromises {
 	async rename(from, to) {
 		return await this.fs.op("readwrite",async store=>{
 			this.fs.statMap.rename(from,to);
+			this.fs.notifyWatchers(from,"change");
+			this.fs.notifyWatchers(to,"change");
 		});
 	}
 }

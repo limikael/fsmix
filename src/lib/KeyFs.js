@@ -301,6 +301,42 @@ export class KeyFs extends EventTarget {
 		this.scheduleSaveIndex();
 	}
 
+	_unlinkSync(name, options={}) {
+		if (options.recursive) {
+			let stat=this.statMap.lget(name);
+			if (!stat)
+				throw new FileError("ENOENT");
+
+			let splitName=splitPath(name);
+			if (stat.type=="dir") {
+				for (let child of Object.keys(stat.children)) {
+					let childName=[...splitName,child];
+					this._unlinkSync(childName,options);
+				}
+			}
+		}
+
+		this.notifyWatchers(name,"change");
+		let entry=this.statMap.unlink(name);
+		if (entry.nlink==0 && entry.type=="file") {
+			this.kv.deleteSync(entry.key);
+		}
+	}
+
+	unlinkSync(name, options) {
+		this.assertInit();
+		this._unlinkSync(name,options);
+		this.scheduleSaveIndex();
+	}
+
+	rmSync(name, options) {
+		this.unlinkSync(name,options);
+	}
+
+	rmdirSync(name, options) {
+		this.unlinkSync(name,options);
+	}
+
 	watch(name, options={}) {
 		let realName=this.realpathSync(name);
 		let watcher=new Watcher(realName,{

@@ -1,5 +1,6 @@
 import {minimatch} from "minimatch";
-import path from "path";
+// todo TODO don't rely on path-browserify
+import path from "path-browserify";
 
 export function minimatchAny(name, patterns, options={}) {
 	for (let pattern of patterns)

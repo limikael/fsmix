@@ -56,4 +56,23 @@ describe("watch",()=>{
 
 		expect(rec).toEqual(["world","world2","world2/test2"]);
 	});
+
+	it("watches removal",async ()=>{
+		let fs=createIndexFs({indexedDB, dbName: "watch-test-3"});
+		await fs.init();
+
+		fs.mkdirSync("hello");
+		let watcher=fs.watch("hello",{recursive: true});
+
+		let rec=[];
+		watcher.addEventListener("change",ev=>{
+			rec.push(ev.filename);
+		})
+
+		await fs.promises.writeFile("hello/world","test");
+		expect(rec).toEqual(["world"]);
+
+		await fs.promises.rm("hello/world");
+		expect(rec).toEqual(["world","world"]);
+	});
 });
