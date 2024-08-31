@@ -1,20 +1,27 @@
 import {ResolvablePromise, eventPromise} from "../utils/js-util.js";
 import LruCache from "../utils/LruCache.js";
+import {statsCount, statsDistinct} from "../utils/stats-util.js";
 
 export default class IndexKv extends EventTarget {
-	constructor({indexedDB, dbName, storeName, cacheMaxItems}={}) {
+	constructor({indexedDB, dbName, storeName, cache, cacheMaxItems, stats}={}) {
 		super();
 
 		this.indexedDB=indexedDB||globalThis.indexedDB;
 		this.dbName=dbName||"kv";
 		this.storeName=storeName||"kv";
+		this.stats=stats;
 		this.writeQueue={};
 		this.written={};
+		this.syncData={};
 
 		if (!cacheMaxItems)
 			cacheMaxItems=10;
 
-		this.lruCache=new LruCache({maxItems: cacheMaxItems});
+		if (cache===undefined)
+			cache=true;
+
+		if (cache)
+			this.lruCache=new LruCache({maxItems: cacheMaxItems});
 	}
 
 	async init() {
@@ -61,7 +68,7 @@ export default class IndexKv extends EventTarget {
 		if (!Object.keys(this.writeQueue).length)
 			return;
 
-		globalThis.stats?.count("kv write tx");
+		statsCount(this.stats,"kv write tx");
 
 		this.written=this.writeQueue;
 		this.writeQueue={};
@@ -93,7 +100,7 @@ export default class IndexKv extends EventTarget {
 
 	getReadTransaction() {
 		if (!this.currentReadTransaction) {
-			globalThis.stats?.count("kv read tx");
+			statsCount(this.stats,"kv read tx");
 
 			//console.log("starting new read tx");
 			let tx=this.db.transaction([this.storeName],"readonly",{
@@ -147,21 +154,16 @@ export default class IndexKv extends EventTarget {
 		if (!this.initComplete)
 			await this.init();
 
-		globalThis.stats?.count("kv get");
 		key=this.sanitizeKey(key);
 
-		if (globalThis.stats) {
-			if (!globalThis.stats.seenKeys)
-				globalThis.stats.seenKeys=[];
+		statsCount(this.stats,"kv get");
+		statsDistinct(this.stats,"kv seen keys",key);
 
-			if (!globalThis.stats.seenKeys.includes(key)) {
-				globalThis.stats.count("kv seen keys");
-				globalThis.stats.seenKeys.push(key);
-			}
-		}
+		if (this.syncData[key]!==undefined)
+			return this.syncData[key];
 
-		if (this.lruCache.has(key)) {
-			globalThis.stats?.count("kv cache hit");
+		if (this.lruCache && this.lruCache.has(key)) {
+			statsCount(this.stats,"kv cache hit");
 			return this.lruCache.get(key);
 		}
 
@@ -175,37 +177,68 @@ export default class IndexKv extends EventTarget {
 		else if (this.written.hasOwnProperty(key))
 			value=this.written[key];
 
-		//console.log("not in queue, doing tx");
-
 		else {
+			//console.log("not in queue, doing tx");
 			let req=this.readOp(store=>store.get(key));
 			let ev=await eventPromise(req,"success","error");
 			value=ev.target.result;
 		}
 
-		this.lruCache.set(key,value);
+		if (this.lruCache)
+			this.lruCache.set(key,value);
+
 		return value;
+	}
+
+	getSync(key, value) {
+		if (!this.initComplete)
+			throw new Error("Need explicit init for sync operation");
+
+		key=this.sanitizeKey(key);
+		statsCount(this.stats,"kv get");
+		statsDistinct(this.stats,"kv seen keys",key);
+
+		if (this.syncData[key]===undefined)
+			throw new Error("Not avilable sync: "+key);
+
+		return this.syncData[key];
 	}
 
 	async set(key, value) {
 		if (!this.initComplete)
 			await this.init();
 
-		globalThis.stats?.count("kv set");
 		key=this.sanitizeKey(key);
+		statsCount(this.stats,"kv set");
+		statsDistinct(this.stats,"kv seen keys",key);
 
-		if (globalThis.stats) {
-			if (!globalThis.stats.seenKeys)
-				globalThis.stats.seenKeys=[];
+		if (this.syncData[key]!==undefined)
+			this.syncData[key]=value;
 
-			if (!globalThis.stats.seenKeys.includes(key)) {
-				globalThis.stats.count("kv seen keys");
-				globalThis.stats.seenKeys.push(key);
-			}
+		else if (this.lruCache)
+			this.lruCache.set(key,value);
 
-		}
+		this.writeQueue[key]=value;
+		this.startWriteTransaction();
+	}
 
-		this.lruCache.set(key,value);
+	setSync(key, value) {
+		if (!this.initComplete)
+			throw new Error("Need explicit init for sync operation");
+
+		key=this.sanitizeKey(key);
+		statsCount(this.stats,"kv set");
+		statsDistinct(this.stats,"kv seen keys",key);
+
+		if (this.lruCache)
+			this.lruCache.delete(key);
+
+		if (value===undefined)
+			delete this.syncData[key];
+
+		else
+			this.syncData[key]=value;
+
 		this.writeQueue[key]=value;
 		this.startWriteTransaction();
 	}
@@ -214,10 +247,38 @@ export default class IndexKv extends EventTarget {
 		if (!this.initComplete)
 			await this.init();
 
+		this.deleteSync(key);
+	}
+
+	deleteSync(key) {
+		if (!this.initComplete)
+			throw new Error("Need explicit init for sync operation");
+
 		key=this.sanitizeKey(key);
-		this.lruCache.delete(key);
+
+		if (this.syncData[key]!==undefined)
+			delete this.syncData[key];
+
+		if (this.lruCache)
+			this.lruCache.delete(key);
+
 		this.writeQueue[key]=undefined;
 		this.startWriteTransaction();
+	}
+
+	async populateSync(keys) {
+		if (!this.initComplete)
+			await this.init();
+
+		for (let key of keys) {
+			key=this.sanitizeKey(key);
+			if (this.syncData[key]===undefined)
+				this.syncData[key]=await this.get(key);
+		}
+
+		for (let key of Object.keys(this.syncData))
+			if (!keys.includes(key))
+				delete this.syncData[key];
 	}
 
 	async sync() {

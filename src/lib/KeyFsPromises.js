@@ -12,13 +12,7 @@ export default class KeyFsPromises {
 
 	async writeFile(name, content) {
 		return await this.fs.op("readwrite",async ()=>{
-			if (typeof content=="string" ||
-					ArrayBuffer.isView(content))
-				content=new Blob([content]);
-
-			if (!(content instanceof Blob))
-				throw new Error("Need something blobbable.");
-
+			this.fs.contentConverter.assertValidContent(content);
 			let stat=this.fs.statMap.get(name);
 			if (stat) {
 				if (stat.type!="file")
@@ -34,12 +28,12 @@ export default class KeyFsPromises {
 				await this.fs.kv.set(stat.key,content);
 			}
 
-			stat.size=content.size;
+			stat.size=this.fs.contentConverter.getContentSize(content);
 			stat.mtimeMs=Date.now();
 		});
 	}
 
-	async readFile(name, encoding) {
+	async readFile(name, encoding="buffer") {
 		return await this.fs.op("readonly",async ()=>{
 			let stat=this.fs.statMap.get(name);
 			if (!stat)
@@ -49,28 +43,10 @@ export default class KeyFsPromises {
 				throw new FileError("ENOTFILE");
 
 			let content=await this.fs.kv.get(stat.key);
-			if (!content) {
+			if (content===undefined)
 				throw new Error("Inode missing, fn="+name+" inode="+JSON.stringify(stat));
-			}
 
-			if (encoding=="utf8")
-				return await content.text();
-
-			else if (encoding=="blob")
-				return content;
-
-			else if (encoding)
-				throw new Error("Can only handle utf8 encoding");
-
-			//console.log(content);
-
-			let uint8Array=new Uint8Array(await (new Response(content)).arrayBuffer());
-			//console.log("haxxing uint8array");
-			uint8Array.toString=function() {
-				let decoder=new TextDecoder();
-				return decoder.decode(this);
-			}
-			return uint8Array;
+			return this.fs.contentConverter.convert(content,encoding);
 		});
 	}
 
@@ -103,11 +79,7 @@ export default class KeyFsPromises {
 
 	async stat(name) {
 		await this.fs.init();
-		let stat=this.fs.statMap.get(name);
-		if (!stat)
-			throw new FileError("ENOENT");
-
-		return new Stat(stat);
+		return this.fs.statSync(name);
 	}
 
 	async lstat(name) {
@@ -184,14 +156,7 @@ export default class KeyFsPromises {
 
 	async readdir(name) {
 		await this.fs.init();
-		let entry=this.fs.statMap.get(name);
-		if (!entry)
-			throw new FileError("ENOENT");
-
-		if (entry.type!="dir")
-			throw new FileError("ENOTDIR");
-
-		return Object.keys(entry.children);
+		return this.fs.readdirSync(name);
 	}
 
 	async realpath(name) {
