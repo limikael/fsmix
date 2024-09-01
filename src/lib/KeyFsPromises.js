@@ -36,7 +36,7 @@ export default class KeyFsPromises {
 			stat.size=this.fs.contentConverter.getContentSize(content);
 			stat.mtimeMs=Date.now();
 
-			this.fs.notifyWatchers(name,"change");
+			this.fs.notifyWatchers("change",this.fs.realpathSync(name));
 		});
 	}
 
@@ -134,9 +134,10 @@ export default class KeyFsPromises {
 
 	async rename(from, to) {
 		return await this.fs.op("readwrite",async store=>{
+			let realFrom=this.fs.realpathSync(from);
 			this.fs.statMap.rename(from,to);
-			this.fs.notifyWatchers(from,"change");
-			this.fs.notifyWatchers(to,"change");
+			this.fs.notifyWatchers("delete",realFrom);
+			this.fs.notifyWatchers("create",this.fs.realpathSync(to));
 		});
 	}
 }

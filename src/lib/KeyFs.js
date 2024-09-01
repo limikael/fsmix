@@ -61,14 +61,17 @@ export class KeyFs extends EventTarget {
 		this.watchers=[];
 	}
 
-	notifyWatchers(name, event) {
+	notifyWatchers(event, name) {
+		if (!["change","delete","create"].includes(event))
+			throw new Error("Unknown change event: "+event);
+
 		if (!this.watchers.length)
 			return;
 
-		let realName=this.realpathSync(name);
+		//let realName=this.realpathSync(name);
 		for (let w of this.watchers)
-			if (w.match(realName))
-				w.dispatch(event,realName);
+			if (w.match(name))
+				w.dispatch(event,name);
 	}
 
 	generateId() {
@@ -227,7 +230,7 @@ export class KeyFs extends EventTarget {
 
 		stat.size=content.size;
 		stat.mtimeMs=Date.now();
-		this.notifyWatchers(name,"change");
+		this.notifyWatchers("change",this.realpathSync(name));
 		this.scheduleSaveIndex();
 	}
 
@@ -275,7 +278,7 @@ export class KeyFs extends EventTarget {
 	_mkdirSync(name, {recursive}={}) {
 		if (!recursive) {
 			this.statMap.create(name,"dir");
-			this.notifyWatchers(name,"change");
+			this.notifyWatchers("change",this.realpathSync(name));
 			return;
 		}
 
@@ -292,7 +295,7 @@ export class KeyFs extends EventTarget {
 		this._mkdirSync(parentSplit,{recursive});
 
 		this.statMap.create(name,"dir");
-		this.notifyWatchers(name,"change");
+		this.notifyWatchers("change",this.realpathSync(name));
 	}
 
 	mkdirSync(name, options) {
@@ -316,8 +319,9 @@ export class KeyFs extends EventTarget {
 			}
 		}
 
-		this.notifyWatchers(name,"change");
+		let realName=this.realpathSync(name);
 		let entry=this.statMap.unlink(name);
+		this.notifyWatchers("delete",realName);
 		if (entry.nlink==0 && entry.type=="file") {
 			this.kv.deleteSync(entry.key);
 		}

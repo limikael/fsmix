@@ -31,9 +31,16 @@ export default class Watcher extends EventTarget {
 		fileName=fileName.join("/");
 
 		let ev=new Event("change");
-		ev.eventType="change";
+		ev.eventType=event;
 		ev.filename=fileName;
-		this.dispatchEvent(ev);
+		try {
+			this.dispatchEvent(ev);
+		}
+
+		catch(e) {
+			console.log("**** fs watcher threw error");
+			console.log(e);
+		}
 	}
 
 	close() {
