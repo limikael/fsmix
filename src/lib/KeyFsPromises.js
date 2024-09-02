@@ -14,12 +14,14 @@ export default class KeyFsPromises {
 		return await this.fs.op("readwrite",async ()=>{
 			this.fs.contentConverter.assertValidContent(content);
 			let stat=this.fs.statMap.get(name);
+			let eventType="change";
 			if (stat) {
 				if (stat.type!="file")
 					throw new FileError("ENOTFILE");
 			}
 
 			else {
+				eventType="create";
 				//console.log("create: "+name);
 				stat=this.fs.statMap.create(name,"file");
 				stat.key=this.fs.generateId();
@@ -36,7 +38,7 @@ export default class KeyFsPromises {
 			stat.size=this.fs.contentConverter.getContentSize(content);
 			stat.mtimeMs=Date.now();
 
-			this.fs.notifyWatchers("change",this.fs.realpathSync(name));
+			this.fs.notifyWatchers(eventType,this.fs.realpathSync(name));
 		});
 	}
 

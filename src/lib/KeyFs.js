@@ -30,8 +30,10 @@ import Watcher from "./Watcher.js";
 */
 
 export class KeyFs extends EventTarget {
-	constructor(kv) {
+	constructor(kv, {stats}={}) {
 		super();
+
+		this.stats=stats;
 
 		this.kv=kv;
 		this.kv.addEventListener("error",ev=>{
@@ -159,6 +161,7 @@ export class KeyFs extends EventTarget {
 	async addSyncIgnorePattern(pattern) {
 		await this.init();
 		this.syncIgnorePatterns.push(pattern);
+		this.syncIgnorePatterns.push(pattern+"/**");
 		await this.refreshSyncFiles();
 	}
 
@@ -200,6 +203,7 @@ export class KeyFs extends EventTarget {
 	}
 
 	realpathSync(name) {
+		this.assertInit();
 		return this.statMap.realpath(name);
 	}
 
@@ -214,6 +218,7 @@ export class KeyFs extends EventTarget {
 			throw new Error("Can only save strings, array buffers and blobs.");
 
 		let stat=this.statMap.get(name);
+		let eventType="change";
 		if (stat) {
 			if (stat.type!="file")
 				throw new FileError("ENOTFILE");
@@ -223,6 +228,7 @@ export class KeyFs extends EventTarget {
 
 		else {
 			//console.log("create: "+name);
+			eventType="create";
 			stat=this.statMap.create(name,"file");
 			stat.key=this.generateId();
 			this.kv.setSync(stat.key,content);
@@ -230,7 +236,7 @@ export class KeyFs extends EventTarget {
 
 		stat.size=content.size;
 		stat.mtimeMs=Date.now();
-		this.notifyWatchers("change",this.realpathSync(name));
+		this.notifyWatchers(eventType,this.realpathSync(name));
 		this.scheduleSaveIndex();
 	}
 
@@ -278,7 +284,7 @@ export class KeyFs extends EventTarget {
 	_mkdirSync(name, {recursive}={}) {
 		if (!recursive) {
 			this.statMap.create(name,"dir");
-			this.notifyWatchers("change",this.realpathSync(name));
+			this.notifyWatchers("create",this.realpathSync(name));
 			return;
 		}
 
@@ -295,7 +301,7 @@ export class KeyFs extends EventTarget {
 		this._mkdirSync(parentSplit,{recursive});
 
 		this.statMap.create(name,"dir");
-		this.notifyWatchers("change",this.realpathSync(name));
+		this.notifyWatchers("create",this.realpathSync(name));
 	}
 
 	mkdirSync(name, options) {
@@ -307,6 +313,9 @@ export class KeyFs extends EventTarget {
 	_unlinkSync(name, options={}) {
 		if (options.recursive) {
 			let stat=this.statMap.lget(name);
+			if (!stat && options.force)
+				return;
+
 			if (!stat)
 				throw new FileError("ENOENT");
 

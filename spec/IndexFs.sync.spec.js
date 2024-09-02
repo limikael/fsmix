@@ -31,4 +31,22 @@ describe("sync",()=>{
 		await fs.addSyncPattern("/syncdir/**");
 		await fs.writeFileSync("syncdir/test","hello");
 	});
+
+	it("ignores directories",async ()=>{
+		let fs=createIndexFs({indexedDB, dbName: "sync-test-2"});
+
+		await fs.promises.mkdir("hello");
+		await fs.promises.writeFile("hello/world","test");
+
+		await fs.addSyncIgnorePattern("/hello/node_modules");
+		//await fs.addSyncIgnorePattern("/hello/node_modules/**");
+		await fs.addSyncPattern("/hello/**");
+		//await fs.addSyncPattern("/hello");
+
+		await fs.promises.mkdir("/hello/node_modules");
+		await fs.promises.writeFile("/hello/node_modules/test","bla");
+
+		expect(fs.isSync("/hello/node_modules/test")).toEqual(false);
+		expect(fs.isSync("/hello/test")).toEqual(true);
+	});
 });

@@ -37,7 +37,7 @@ export default class Watcher extends EventTarget {
 			this.dispatchEvent(ev);
 		}
 
-		catch(e) {
+		catch (e) {
 			console.log("**** fs watcher threw error");
 			console.log(e);
 		}
