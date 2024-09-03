@@ -16,11 +16,15 @@ describe("watch",()=>{
 	});
 
 	it("can watch",async ()=>{
-		let fs=createIndexFs({indexedDB, dbName: "watch-test-1"});
+		let stats={};
+
+		let fs=createIndexFs({indexedDB, dbName: "watch-test-1", stats: stats});
 		await fs.init();
 
 		fs.mkdirSync("hello");
 		let watcher=fs.watch("hello",{recursive: true});
+
+		expect(stats["num watchers"]).toEqual(1);
 
 		let rec=[];
 		watcher.addEventListener("change",ev=>{
@@ -36,6 +40,8 @@ describe("watch",()=>{
 		watcher.close();
 		await fs.promises.writeFile("hello/world2/test2","stuff");
 		expect(rec).toEqual(["world","world2","world2/test2"]);
+
+		expect(stats["num watchers"]).toEqual(0);
 	});
 
 	it("can watch with nodejs style events",async ()=>{

@@ -5,7 +5,9 @@ import KeyFs from "./KeyFs.js";
 //export {KeyFs} from "./KeyFs.js";
 
 export function createIndexFs({indexedDB, dbName, cacheMaxItems, stats}={}) {
-	let kv=new IndexKv({indexedDB, dbName, cacheMaxItems});
+	//console.log("stats: ",stats);
+
+	let kv=new IndexKv({indexedDB, dbName, cacheMaxItems, stats});
 	let fs=new KeyFs(kv,{stats});
 	return fs;
 }

@@ -8,6 +8,7 @@ import KeyFsPromises from "./KeyFsPromises.js";
 import {minimatchAny, findFiles} from "../utils/minimatch-util.js";
 import ContentConverter from "../utils/ContentConverter.js";
 import Watcher from "./Watcher.js";
+import {statsCount} from "../utils/stats-util.js";
 
 /*
 	func:
@@ -357,6 +358,7 @@ export class KeyFs extends EventTarget {
 			fs: this
 		});
 		this.watchers.push(watcher);
+		statsCount(this.stats,"num watchers");
 
 		return watcher;
 	}

@@ -1,4 +1,5 @@
 import {splitPath, arrayEq} from "../utils/js-util.js";
+import {statsDec} from "../utils/stats-util.js";
 
 export default class Watcher extends EventTarget {
 	constructor(watchName, options={}) {
@@ -51,6 +52,7 @@ export default class Watcher extends EventTarget {
 		if (i<0)
 			return;
 
+		statsDec(this.fs.stats,"num watchers");
 		this.fs.watchers.splice(i,1);
 		this.fs=null;
 	}
