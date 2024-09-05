@@ -11,5 +11,20 @@ describe("rename",()=>{
 
 		await fs.promises.rename("hello/world/test","/bla");
 		expect(await fs.promises.readFile("/bla","utf8")).toEqual("testing");
+
+		expect(fs.existsSync("hello/world/test")).toEqual(false);
+	});
+
+	it("works sync",async ()=>{
+		let fs=createIndexFs({indexedDB, dbName: "renametest-2"});
+		await fs.promises.mkdir("hello");
+		await fs.addSyncPattern("/hello/**");
+		fs.mkdirSync("hello/world");
+		fs.writeFileSync("hello/world/test","testing");
+
+		fs.renameSync("hello/world/test","/hello/bla");
+		expect(fs.readFileSync("/hello/bla","utf8")).toEqual("testing");
+
+		expect(fs.existsSync("hello/world/test")).toEqual(false);
 	});
 });

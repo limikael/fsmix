@@ -351,6 +351,18 @@ export class KeyFs extends EventTarget {
 		this.unlinkSync(name,options);
 	}
 
+	renameSync(from, to) {
+		this.assertInit();
+		if (!this.isSync(from) || !this.isSync(to))
+			throw new Error("Not available sync: "+from+" or "+to);
+
+		let realFrom=this.realpathSync(from);
+		this.statMap.rename(from,to);
+		this.notifyWatchers("delete",realFrom);
+		this.notifyWatchers("create",this.realpathSync(to));
+		this.scheduleSaveIndex();
+	}
+
 	watch(name, options={}) {
 		let realName=this.realpathSync(name);
 		let watcher=new Watcher(realName,{

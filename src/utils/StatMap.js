@@ -204,7 +204,7 @@ export default class StatMap {
 			throw new FileError("EEXIST");
 
 		let id=fromParent.children[fromBasename];
-		delete fromParent[fromBasename];
+		delete fromParent.children[fromBasename];
 		toParent.children[toBasename]=id;
 	}
 }
