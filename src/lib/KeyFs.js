@@ -132,6 +132,8 @@ export class KeyFs extends EventTarget {
 			this.scheduleSaveIndex();
 			//await this.kv.set("index",this.statMap.getData());
 
+		//console.log("op res typeof: "+(typeof res));
+
 		return res;
 	}
 

@@ -55,7 +55,10 @@ export default class KeyFsPromises {
 			if (content===undefined)
 				throw new Error("Inode missing, fn="+name+" inode="+JSON.stringify(stat));
 
-			return this.fs.contentConverter.convert(content,encoding);
+			//console.log("read...",content);
+			//console.log("converting to: "+encoding);
+
+			return await this.fs.contentConverter.convert(content,encoding);
 		});
 	}
 
@@ -141,5 +144,16 @@ export default class KeyFsPromises {
 			this.fs.notifyWatchers("delete",realFrom);
 			this.fs.notifyWatchers("create",this.fs.realpathSync(to));
 		});
+	}
+
+	async copyFile(from, to, options) {
+		await this.cp(from,to,options);
+	}
+
+	async cp(from, to, options) {
+		let content=await this.readFile(from);
+
+		//console.log("save: "+to);
+		await this.writeFile(to,content);
 	}
 }

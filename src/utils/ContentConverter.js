@@ -78,6 +78,7 @@ export default class ContentConverter {
 	}
 
 	async asString(content) {
+		//console.log("as string, current="+this.getContentType(content));
 		switch (this.getContentType(content)) {
 			case "utf8":
 			case "buffer":
@@ -95,6 +96,8 @@ export default class ContentConverter {
 	asStringSync(content) {
 		switch (this.getContentType(content)) {
 			case "utf8":
+				//console.log("getting utf8 as string, content=",content);
+				//console.log("typeof content=",(typeof content));
 				return content;
 				break;
 
