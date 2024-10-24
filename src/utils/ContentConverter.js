@@ -42,6 +42,8 @@ export default class ContentConverter {
 	}
 
 	async convert(input, format) {
+		//console.log("converting from "+this.getContentType(input)+" to "+format);
+
 		switch (format) {
 			case "utf8":
 				return await this.asString(input);
@@ -139,6 +141,8 @@ export default class ContentConverter {
 				break;
 
 			case "buffer":
+				//console.log("buffer as buffer...");
+				this.appendBufferToString(content);
 				return content;
 				break;
 
